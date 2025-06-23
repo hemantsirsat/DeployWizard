@@ -2,7 +2,7 @@ import pytest
 import os
 import tempfile
 from pathlib import Path
-from scaffolder.model_registry import ModelRegistry
+from deploywizard.scaffolder.model_registry import ModelRegistry
 
 @pytest.fixture
 def temp_registry():
