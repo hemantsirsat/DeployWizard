@@ -164,23 +164,23 @@ def test_end_to_end_workflow(temp_dir):
     try:
         # First, build the image to capture build logs
         print("\nBuilding Docker image...")
-        build_cmd = "docker-compose build --no-cache --progress=plain"  # Add --progress=plain for detailed output
-        build_result = run_command(build_cmd, cwd=api_dir, check=False, env={**os.environ, "DOCKER_BUILDKIT": "0"})  # Disable BuildKit for simpler output
-        
+        build_cmd = "docker compose build --no-cache --progress=plain"  
+        build_result = run_command(build_cmd, cwd=api_dir, check=False, env={**os.environ, "DOCKER_BUILDKIT": "0"})  
+    
         print(f"Build command exited with code: {build_result.returncode}")
         print("Build STDOUT:", build_result.stdout)
         print("Build STDERR:", build_result.stderr)
         
         if build_result.returncode != 0:
             # Get detailed build logs
-            logs_cmd = "docker-compose logs"
+            logs_cmd = "docker compose logs"  
             logs_result = run_command(logs_cmd, cwd=api_dir, check=False)
             print("\nContainer logs after failed build:")
             print(logs_result.stdout)
             print("Logs STDERR:", logs_result.stderr)
             
             # Get container status
-            ps_cmd = "docker-compose ps -a"
+            ps_cmd = "docker compose ps -a"  
             ps_result = run_command(ps_cmd, cwd=api_dir, check=False)
             print("\nContainer status:")
             print(ps_result.stdout)
@@ -195,7 +195,7 @@ def test_end_to_end_workflow(temp_dir):
         
         # If build succeeded, start the container
         print("\nStarting Docker containers...")
-        up_cmd = "docker-compose up -d"
+        up_cmd = "docker compose up -d"  
         up_result = run_command(up_cmd, cwd=api_dir, check=False)
         
         print(f"Up command exited with code: {up_result.returncode}")
@@ -204,14 +204,14 @@ def test_end_to_end_workflow(temp_dir):
         
         if up_result.returncode != 0:
             # Get container logs
-            logs_cmd = "docker-compose logs"
+            logs_cmd = "docker compose logs"  
             logs_result = run_command(logs_cmd, cwd=api_dir, check=False)
             print("\nContainer logs after failed start:")
             print(logs_result.stdout)
             print("Logs STDERR:", logs_result.stderr)
             
             # Get container status
-            ps_cmd = "docker-compose ps -a"
+            ps_cmd = "docker compose ps -a"  
             ps_result = run_command(ps_cmd, cwd=api_dir, check=False)
             print("\nContainer status:")
             print(ps_result.stdout)
@@ -286,21 +286,21 @@ def test_end_to_end_workflow(temp_dir):
         
         if not health_check_passed:
             # Get container logs for debugging
-            logs_cmd = "docker-compose logs --no-color"
+            logs_cmd = "docker compose logs --no-color"
             logs_result = run_command(logs_cmd, cwd=api_dir, check=False)
             print("\nContainer logs:")
             print(logs_result.stdout)
             print("Container errors:", logs_result.stderr)
             
             # Get container status
-            ps_cmd = "docker-compose ps -a"
+            ps_cmd = "docker compose ps -a"
             ps_result = run_command(ps_cmd, cwd=api_dir, check=False)
             print("\nContainer status:")
             print(ps_result.stdout)
             
             # Try to get more info from the container using Python's http.client
             print("\nTrying to check container health from inside the container...")
-            inspect_cmd = f'''docker-compose exec -T ml-service python -c "
+            inspect_cmd = f'''docker compose exec -T ml-service python -c "
 import http.client
 import json
 
@@ -377,7 +377,7 @@ except Exception as e:
         try:
             print("\nCleaning up...")
             # Stop and remove containers, networks, and volumes
-            down_cmd = "docker-compose down -v --remove-orphans"
+            down_cmd = "docker compose down -v --remove-orphans"
             print(f"Running: {down_cmd} in {api_dir}")
             down_result = subprocess.run(
                 down_cmd,
