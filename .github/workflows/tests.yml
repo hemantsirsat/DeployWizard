@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ['3.8', '3.9', '3.10']
+        python-version: ['3.9', '3.10', '3.11']
       fail-fast: false
 
     steps:
@@ -36,6 +36,8 @@ jobs:
         pip install torch==2.0.1+cpu torchvision==0.15.2+cpu --index-url https://download.pytorch.org/whl/cpu
         pip install tensorflow-cpu==2.12.0
         pip install scikit-learn==1.2.2
+        # Install importlib-resources for Python 3.8 compatibility (though we're not using 3.8 anymore)
+        pip install importlib-resources
     
     - name: Run tests with coverage
       timeout-minutes: 15
