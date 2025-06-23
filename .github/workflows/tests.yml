@@ -18,9 +18,7 @@ jobs:
       # Add a service for Docker in Docker
       docker:
         image: docker:dind
-        options: >-
-          --privileged
-          --network=host
+        options: --privileged
 
     steps:
     - uses: actions/checkout@v3
@@ -35,9 +33,10 @@ jobs:
 
     - name: Set up Docker Compose
       run: |
-        curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-        chmod +x /usr/local/bin/docker-compose
-        docker-compose --version
+        mkdir -p ~/.docker/cli-plugins/
+        curl -SL https://github.com/docker/compose/releases/latest/download/docker-compose-linux-x86_64 -o ~/.docker/cli-plugins/docker-compose
+        chmod +x ~/.docker/cli-plugins/docker-compose
+        docker compose version
     
     - name: Install system dependencies
       run: |
@@ -58,22 +57,16 @@ jobs:
     - name: Verify Docker
       run: |
         docker --version
-        docker-compose --version
+        docker compose version
         docker info
     
     - name: Run tests with coverage
       timeout-minutes: 15
-      env:
-        DOCKER_HOST: tcp://localhost:2375/
-        DOCKER_TLS_CERTDIR: ""
       run: |
         python -m pytest -v --cov=deploywizard --cov-report=xml -k "not test_end_to_end_workflow"
     
     - name: Run end-to-end tests
       timeout-minutes: 15
-      env:
-        DOCKER_HOST: tcp://localhost:2375/
-        DOCKER_TLS_CERTDIR: ""
       run: |
         python -m pytest -v tests/test_readme_examples.py::test_end_to_end_workflow
     
