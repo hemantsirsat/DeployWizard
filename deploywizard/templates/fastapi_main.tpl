@@ -68,16 +68,110 @@ except Exception as e:
 
 {% elif framework == 'pytorch' %}
 import torch
+import os
+import importlib.util
+import sys
+from pathlib import Path
+
+# Set device
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+logger.info(f"Using device: {device}")
+
+# Try to load the model
 try:
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    model = torch.load(MODEL_PATH, map_location=device)
-    model = model.to(device)
-    model.eval()
-    model_loaded = True
-    logger.info(f"Successfully loaded PyTorch model on {device}")
+    model = None
+    model_loaded = False
+    model_error = None
+    
+    # Debug: Print model path and check if file exists
+    logger.info(f"Looking for model at: {MODEL_PATH}")
+    logger.info(f"File exists: {os.path.exists(MODEL_PATH)}")
+    if os.path.exists(MODEL_PATH):
+        logger.info(f"File size: {os.path.getsize(MODEL_PATH) / (1024*1024):.2f} MB")
+    
+    # Strategy 1: Try loading as a full PyTorch model
+    try:
+        logger.info("Attempting to load as full PyTorch model...")
+        model = torch.load(MODEL_PATH, map_location=device)
+        if isinstance(model, torch.nn.Module):
+            model = model.to(device)
+            model.eval()
+            model_loaded = True
+            logger.info("Successfully loaded as a full PyTorch model")
+    except Exception as e:
+        logger.warning(f"Failed to load as full model: {str(e)}")
+    
+    # Strategy 2: Try loading with model class from model.py
+    if not model_loaded:
+        try:
+            logger.info("Attempting to load with model class...")
+            model_dir = Path(MODEL_PATH).parent
+            model_file = model_dir / "model.py"
+            
+            logger.info(f"Looking for model class in: {model_file}")
+            
+            if model_file.exists():
+                # Import the model class
+                spec = importlib.util.spec_from_file_location("model", str(model_file))
+                model_module = importlib.util.module_from_spec(spec)
+                sys.modules["model"] = model_module
+                spec.loader.exec_module(model_module)
+                
+                # Find the model class (look for a class that inherits from nn.Module)
+                model_class = None
+                for name, obj in model_module.__dict__.items():
+                    if (isinstance(obj, type) and 
+                        issubclass(obj, torch.nn.Module) and 
+                        obj != torch.nn.Module):
+                        model_class = obj
+                        break
+                
+                if model_class is None:
+                    raise ValueError("No PyTorch model class found in model.py")
+                
+                logger.info(f"Found model class: {model_class.__name__}")
+                
+                # Load the model state
+                checkpoint = torch.load(MODEL_PATH, map_location=device)
+                
+                # Handle different checkpoint formats
+                if isinstance(checkpoint, dict) and 'state_dict' in checkpoint:
+                    state_dict = checkpoint['state_dict']
+                    # Create model with parameters from checkpoint if available
+                    if hasattr(checkpoint, 'input_size') and hasattr(checkpoint, 'output_size'):
+                        model = model_class(
+                            input_size=checkpoint['input_size'],
+                            output_size=checkpoint['output_size']
+                        ).to(device)
+                    else:
+                        model = model_class().to(device)
+                    
+                    model.load_state_dict(state_dict)
+                    model.eval()
+                    model_loaded = True
+                    logger.info("Successfully loaded model using provided model class and state dict")
+                else:
+                    # Assume the file is just the state dict
+                    model = model_class().to(device)
+                    model.load_state_dict(checkpoint)
+                    model.eval()
+                    model_loaded = True
+                    logger.info("Successfully loaded model using provided model class with direct state dict")
+            
+        except Exception as e:
+            logger.warning(f"Failed to load with model class: {str(e)}", exc_info=True)
+    
+    if not model_loaded:
+        raise ValueError(
+            "Failed to load model. Please ensure:\n"
+            "1. The model file is a valid PyTorch model or state dictionary\n"
+            "2. A model.py file with the model class is in the same directory\n"
+            f"Error details: {str(e) if 'e' in locals() else 'Unknown error'}"
+        )
+
 except Exception as e:
     model_error = str(e)
-    logger.error(f"Error loading PyTorch model: {model_error}")
+    logger.error(f"Error loading PyTorch model: {model_error}", exc_info=True)
     if os.getenv("ENV") == "production":
         raise
 
@@ -160,26 +254,85 @@ async def predict(data: Input):
                 
         {% elif framework == 'pytorch' %}
         with torch.no_grad():
-            features_tensor = torch.tensor(features, dtype=torch.float32).to(device)
+            # Convert input to tensor
+            features_tensor = torch.tensor(features, dtype=torch.float32)
+            
+            # Check if we have a state_dict that needs model initialization
+            if isinstance(model, dict) and 'state_dict' in model:
+                raise HTTPException(
+                    status_code=500,
+                    detail={
+                        "error": "Model initialization required",
+                        "message": (
+                            "The model was loaded as a state dictionary. "
+                            "Please initialize the model class and load the state_dict before making predictions.\n"
+                            "Example:\n"
+                            "```python\n"
+                            "from model import SimpleTorchModel  # Import your model class\n"
+                            "model = SimpleTorchModel()  # Initialize model\n"
+                            "model.load_state_dict(torch.load('path/to/model.pt'))  # Load weights\n"
+                            "model.eval()  # Set to evaluation mode\n"
+                            "```"
+                        ),
+                        "model_path": MODEL_PATH
+                    }
+                )
+            
+            # Move input to the same device as the model
+            if hasattr(model, 'parameters') and next(model.parameters()).is_cuda:
+                features_tensor = features_tensor.cuda()
+            
+            # Get model prediction
             output = model(features_tensor)
-            if hasattr(model, 'predict_proba'):
-                proba = torch.softmax(output, dim=1)[0].tolist()
-                prediction = output.argmax().item()
-                return {"prediction": prediction, "probabilities": proba}
-            else:
-                return {"prediction": output.item()}
+            
+            # Handle different output types
+            if isinstance(output, (list, tuple)):
+                output = output[0]  # Take first output if model returns multiple values
+                
+            # Convert to numpy for easier handling
+            if hasattr(output, 'cpu'):
+                output = output.cpu()
+            if hasattr(output, 'numpy'):
+                output = output.numpy()
+            
+            # Handle different output shapes
+            output = np.squeeze(output)
+            
+            # For binary classification, return probabilities for both classes
+            if output.size == 1:  # Binary classification
+                prob = float(output)
+                return {
+                    "prediction": round(prob),  # Class prediction (0 or 1)
+                    "probabilities": [1 - prob, prob]  # [P(class=0), P(class=1)]
+                }
+            else:  # Multi-class
+                # Apply softmax to get probabilities
+                exp_scores = np.exp(output - np.max(output))  # For numerical stability
+                probabilities = exp_scores / exp_scores.sum()
+                predicted_class = int(np.argmax(probabilities))
+                return {
+                    "prediction": predicted_class,
+                    "probabilities": probabilities.tolist()
+                }
                 
         {% elif framework == 'tensorflow' %}
         prediction = model.predict(features, verbose=0)
-        if len(prediction.shape) > 1 and prediction.shape[1] > 1:  # Classification with multiple classes
-            proba = prediction[0].tolist()
-            return {"prediction": int(np.argmax(prediction[0])), "probabilities": proba}
-        else:  # Regression or binary classification
-            return {"prediction": float(prediction[0][0])}
+        if len(prediction.shape) > 1:
+            if prediction.shape[1] > 1:  # Multi-class classification
+                proba = prediction[0].tolist()
+                return {"prediction": int(np.argmax(prediction[0])), "probabilities": proba}
+            else:  # Binary classification
+                prob = float(prediction[0][0])
+                return {
+                    "prediction": 1 if prob >= 0.5 else 0,
+                    "probabilities": [1 - prob, prob]  # [prob_class_0, prob_class_1]
+                }
+        else:  # Regression
+            return {"prediction": float(prediction[0]), "probabilities": None}
         {% endif %}
             
     except Exception as e:
-        logger.error(f"Prediction error: {str(e)}")
+        logger.error(f"Prediction error: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=500,
             detail={
