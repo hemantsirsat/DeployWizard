@@ -85,26 +85,47 @@ deploywizard info --name sklearn_test_model
 ```bash
 # Deploy a specific version of a model
 deploywizard deploy --name sklearn_test_model --version 1.0.0 --output sklearn_test_model_api
-# Output:
-# Deploying sklearn_test_model (version: 1.0.0)...
-# Generating project for sklearn_test_model v 1.0.0
-# Output directory: sklearn_test_model_api
-# [SUCCESS] Model file copied to /path/to/sklearn_test_model_api/app/sklearn_model.pkl
-# [SUCCESS] Project generated successfully in sklearn_test_model_api
-# Successfully deployed sklearn_test_model to sklearn_test_model_api
-#
-# Next steps:
-# 1. cd sklearn_test_model_api
-# 2. docker-compose up --build
-#
-# Your API will be available at http://localhost:8000
-# API documentation: http://localhost:8000/docs
+
+# For PyTorch models saved as state_dict, provide the model class file
+deploywizard deploy --name pytorch_model --model-class path/to/model.py --output pytorch_model_api
 
 # Or deploy the latest version (omitting --version)
 deploywizard deploy --name sklearn_test_model --output my_model_api
 ```
 
-### 4. Run the Deployed API
+### 4. PyTorch Model Deployment
+
+When deploying PyTorch models, you have several options:
+
+1. **Full Model**: If you saved the entire model using `torch.save(model, 'model.pt')`, you can deploy it directly:
+   ```bash
+   deploywizard deploy --name my_pytorch_model --output pytorch_api
+   ```
+
+2. **State Dictionary**: If you saved just the state dict (`torch.save(model.state_dict(), 'model.pt')`), you need to provide the model class definition:
+   ```bash
+   deploywizard deploy --name my_pytorch_model --model-class path/to/model.py --output pytorch_api
+   ```
+
+   The model class file should define a PyTorch model that inherits from `torch.nn.Module`. For example:
+   ```python
+   import torch
+   import torch.nn as nn
+   
+   class SimpleTorchModel(nn.Module):
+       def __init__(self):
+           super().__init__()
+           self.fc1 = nn.Linear(input_size, hidden_size)
+           self.fc2 = nn.Linear(hidden_size, 1)
+           self.sigmoid = nn.Sigmoid()
+       
+       def forward(self, x):
+           x = torch.relu(self.fc1(x))
+           x = self.fc2(x)
+           return self.sigmoid(x)
+   ```
+
+### 5. Run the Deployed API
 
 After deploying, navigate to the output directory and start the API:
 
@@ -118,7 +139,7 @@ Once the containers are up and running, you can access:
 - Interactive API documentation: http://localhost:8000/docs
 - Alternative documentation: http://localhost:8000/redoc
 
-### 5. Test the API
+### 6. Test the API
 
 You can test the API using `curl` or any HTTP client:
 
@@ -159,16 +180,21 @@ pytest tests/test_cli.py -v
    - Ensure the model file exists at the specified path
    - Verify the framework is correctly specified
 
-2. **Port already in use**
+2. **PyTorch Model Loading Issues**
+   - For state_dict models, ensure you've provided the `--model-class` option
+   - Verify the model class in the provided file matches the architecture used during training
+   - Check that all required imports are included in your model class file
+
+3. **Port already in use**
    - Stop any containers using port 8000
    - Or specify a different port: `docker run -p 8080:8000`
 
-3. **Docker build fails**
+4. **Docker build fails**
    - Check your internet connection
    - Verify Docker is running
    - Check the Docker logs for specific error messages
 
-4. **UnicodeDecodeError on Windows**
+5. **UnicodeDecodeError on Windows**
    - Ensure your terminal supports UTF-8 encoding
    - Set the following environment variable: `set PYTHONUTF8=1`
 
