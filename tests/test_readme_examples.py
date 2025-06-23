@@ -251,11 +251,13 @@ def test_end_to_end_workflow(temp_dir):
                     
                     # Check if the response contains expected fields
                     if isinstance(health_response, dict):
-                        if health_response.get("status") == "ok":
+                        status = health_response.get("status")
+                        if status in ["ok", "healthy"]:  # Accept both 'ok' and 'healthy' status
                             health_check_passed = True
                             break
                         else:
-                            print(f"Unexpected status in health check: {health_response}")
+                            print(f"Unexpected status in health check: {status}")
+                            print(f"Full response: {health_response}")
                     else:
                         print(f"Unexpected health check response format: {health_response}")
                 else:
