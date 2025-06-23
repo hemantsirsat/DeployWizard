@@ -282,78 +282,56 @@ def test_end_to_end_workflow(temp_dir):
                 time.sleep(wait_time)
         
         if not health_check_passed:
-            # Collect diagnostic information
-            diagnostics = []
-            
-            # 1. Get container logs
+            # Get container logs for debugging
             logs_cmd = "docker compose logs --no-color"
             logs_result = run_command(logs_cmd, cwd=api_dir, check=False)
-            diagnostics.append("\n=== Container Logs ===")
-            diagnostics.append(logs_result.stdout)
-            diagnostics.append("Container errors: " + logs_result.stderr)
+            print("\n=== Container Logs ===")
+            print(logs_result.stdout)
+            print("Container errors:", logs_result.stderr)
             
-            # 2. Get container status
+            # Get container status
             ps_cmd = "docker compose ps -a"
             ps_result = run_command(ps_cmd, cwd=api_dir, check=False)
-            diagnostics.append("\n=== Container Status ===")
-            diagnostics.append(ps_result.stdout)
+            print("\n=== Container Status ===")
+            print(ps_result.stdout)
             
-            # 3. Get container health from inside
-            inspect_cmd = '''docker compose exec -T ml-service python -c "
-import sys
-import json
-import socket
-import urllib.request
-import urllib.error
-
-try:
-    # Try to connect to the server
-    try:
-        with urllib.request.urlopen('http://localhost:8000/health', timeout=5) as response:
-            status = response.status
-            body = response.read().decode('utf-8')
-            print(f'Status: {status}')
-            print(f'Response: {body}')
-            try:
-                print(f'JSON: {json.loads(body)}')
-            except json.JSONDecodeError:
-                print('Response is not valid JSON')
-    except urllib.error.HTTPError as e:
-        print(f'HTTP Error: {e.code} {e.reason}')
-        print(f'Response: {e.read().decode("utf-8")}')
-    except urllib.error.URLError as e:
-        print(f'URL Error: {e.reason}')
-    except socket.timeout:
-        print('Connection timed out')
-    except Exception as e:
-        print(f'Unexpected error: {str(e)}')
-        import traceback
-        print(f'Traceback: {traceback.format_exc()}')
-"""
-'''
+            # Get container inspect details
+            inspect_cmd = "docker compose ps -q | xargs -I {} docker inspect {}"
             inspect_result = run_command(inspect_cmd, cwd=api_dir, check=False)
-            diagnostics.append("\n=== Health Check from Inside Container ===")
-            diagnostics.append(inspect_result.stdout or "No output from health check")
+            print("\n=== Container Details ===")
+            print(inspect_result.stdout)
             
-            # 4. Get container network info
-            network_cmd = "docker network inspect $(docker compose ps -q | head -1 | xargs docker inspect --format='{{range $net, $settings := .NetworkSettings.Networks}}{{$net}}{{end}}' 2>/dev/null) 2>/dev/null || echo 'No network info'"
-            network_result = run_command(network_cmd, cwd=api_dir, check=False)
-            diagnostics.append("\n=== Network Information ===")
-            diagnostics.append(network_result.stdout or "No network information available")
+            # Try to get logs from the container directly
+            container_logs_cmd = "docker compose exec -T ml-service cat /app/main.py || echo 'Failed to get main.py'"
+            container_logs = run_command(container_logs_cmd, cwd=api_dir, check=False)
+            print("\n=== Main Application Code ===")
+            print(container_logs.stdout)
             
-            # Combine all diagnostics
-            diagnostic_info = "\n".join(diagnostics)
-            print("\n" + "="*80)
-            print("DIAGNOSTIC INFORMATION")
-            print("="*80)
-            print(diagnostic_info)
+            # Check if the port is actually bound
+            port_check_cmd = "docker compose exec -T ml-service sh -c 'netstat -tuln || ss -tuln || echo \"No netstat/ss available\"'"
+            port_check = run_command(port_check_cmd, cwd=api_dir, check=False)
+            print("\n=== Port Binding Check ===")
+            print(port_check.stdout)
             
-            # Get the last status if available
-            last_status = 'No response received from health check'
-            if 'response' in locals() and response is not None:
-                last_status = f"Last status: {getattr(response, 'status_code', 'No status code')}"
+            # Get environment variables
+            env_cmd = "docker compose exec -T ml-service env"
+            env_result = run_command(env_cmd, cwd=api_dir, check=False)
+            print("\n=== Environment Variables ===")
+            print(env_result.stdout)
             
-            assert False, f"Health check failed after {max_retries} attempts. {last_status}\n\n{diagnostic_info}"
+            # Check if the model file exists in the container
+            model_check_cmd = f'docker compose exec -T ml-service sh -c "ls -la /app/ || echo \"Failed to list /app\""'
+            model_check = run_command(model_check_cmd, cwd=api_dir, check=False)
+            print("\n=== Model File Check ===")
+            print(model_check.stdout)
+            
+            # Check Python version and installed packages
+            py_check = "docker compose exec -T ml-service python -c \"import sys, pkg_resources; print(f'Python {sys.version}\nInstalled packages:'); [print(p) for p in sorted([f'{p.project_name}=={p.version}' for p in pkg_resources.working_set])]\""
+            py_result = run_command(py_check, cwd=api_dir, check=False)
+            print("\n=== Python Environment ===")
+            print(py_result.stdout)
+            
+            assert False, f"Health check failed after {max_retries} attempts. See logs above for details."
         
         # Test prediction
         print("\nTesting prediction endpoint...")
