@@ -1,11 +1,14 @@
 import typer
 from pathlib import Path
-from typing import Optional, List
+from typing import Optional, List, Any
 from rich.console import Console
 from rich.table import Table
 
 from deploywizard.scaffolder import Scaffolder
 from deploywizard import __version__
+
+# Create console instance
+console = Console()
 
 # Create the main CLI app
 app = typer.Typer(
@@ -15,30 +18,37 @@ app = typer.Typer(
     context_settings={"help_option_names": ["-h", "--help"]}
 )
 
+def print_version():
+    """Print the current version and exit."""
+    console.print(f"DeployWizard v{__version__}", style="bold green")
+    raise typer.Exit()
+
+# Add version command
+@app.command("version", help="Show version and exit.")
+def version():
+    """Show version and exit."""
+    print_version()
+
 # Common options
 model_name_option = typer.Option(..., "--name", "-n", help="Name of the model")
 version_option = typer.Option(None, "--version", "-v", help="Version of the model (default: latest)")
 framework_option = typer.Option(..., "--framework", "-f", help="Model framework (sklearn, pytorch, tensorflow)")
 description_option = typer.Option("", "--description", "-d", help="Description of the model")
 
-# Create console instance
-console = Console()
-
-def version_callback(value: bool):
-    if value:
-        console.print(f"DeployWizard v{__version__}", style="bold green")
-        raise typer.Exit()
-
 # Add version callback to the main app
-app.callback()(lambda: None)  # This is needed to make the callback work
-app.callback()(typer.Option(
-    None,
-    "--version",
-    "-V",
-    help="Show version and exit.",
-    callback=version_callback,
-    is_eager=True,
-))
+@app.callback()
+def main(
+    version: bool = typer.Option(
+        None,
+        "--version",
+        "-V",
+        help="Show version and exit.",
+        callback=lambda value: print_version() if value else None,
+        is_eager=True
+    )
+) -> None:
+    """DeployWizard - ML Model Deployment Tool."""
+    pass
 
 @app.command()
 def register(
