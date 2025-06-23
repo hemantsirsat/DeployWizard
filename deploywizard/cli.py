@@ -34,6 +34,7 @@ model_name_option = typer.Option(..., "--name", "-n", help="Name of the model")
 version_option = typer.Option(None, "--version", "-v", help="Version of the model (default: latest)")
 framework_option = typer.Option(..., "--framework", "-f", help="Model framework (sklearn, pytorch, tensorflow)")
 description_option = typer.Option("", "--description", "-d", help="Description of the model")
+model_class_option = typer.Option(None, "--model-class", help="Path to Python file containing model class definition (required for PyTorch state_dict)")
 
 # Add version callback to the main app
 @app.callback()
@@ -248,18 +249,41 @@ def deploy(
     name: str = model_name_option,
     version: str = version_option,
     output_dir: str = typer.Option(".", "--output", "-o", help="Output directory"),
-    api: str = typer.Option("fastapi", help="Type of API to generate")
+    api: str = typer.Option("fastapi", help="Type of API to generate"),
+    model_class: str = model_class_option,
 ):
-    """Generate a deployment project for a registered model."""
+    """Generate a deployment project for a registered model.
+    
+    If the model is a PyTorch state_dict, you must provide --model-class pointing to a Python file
+    containing the model class definition.
+    """
     try:
         scaffolder = Scaffolder()
         console.print(f"Deploying [bold]{name}[/bold] (version: {version or 'latest'})...")
+        
+        # Get model info to check framework
+        model_info = scaffolder.get_model_info(name, version)
+        if not model_info:
+            version_msg = f"version '{version}'" if version else "latest version"
+            console.print(f"Model '{name}' ({version_msg}) not found in registry.", style="red")
+            raise typer.Exit(code=1)
+            
+        # Validate model class is provided for PyTorch state_dict
+        if model_info['framework'] == 'pytorch' and model_class:
+            model_class_path = Path(model_class)
+            if not model_class_path.exists():
+                console.print(f"[yellow]Warning:[/yellow] Model class file not found: {model_class}")
+                if not typer.confirm("Continue without model class? (may cause errors if model is a state_dict)"):
+                    raise typer.Exit()
+            else:
+                console.print(f"Using model class from: {model_class}")
         
         scaffolder.generate_project(
             model_name=name,
             version=version,
             output_dir=output_dir,
-            api_type=api
+            api_type=api,
+            model_class_path=model_class,
         )
         
         console.print(f"Successfully deployed [bold]{name}[/bold] to {output_dir}", style="green")

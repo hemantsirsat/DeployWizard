@@ -80,8 +80,14 @@ class Scaffolder:
         """
         return self._registry.list_models()
 
-    def generate_project(self, model_name: str, version: Optional[str] = None, 
-                       output_dir: str = ".", api_type: str = "fastapi") -> None:
+    def generate_project(
+        self, 
+        model_name: str, 
+        version: Optional[str] = None, 
+        output_dir: str = ".", 
+        api_type: str = "fastapi",
+        model_class_path: Optional[str] = None,
+    ) -> None:
         """
         Generate a deployment project for a registered model.
         
@@ -90,51 +96,61 @@ class Scaffolder:
             version: Optional version string. If None, uses the latest version.
             output_dir: Directory to generate the project in
             api_type: Type of API to generate (e.g., "fastapi", "flask")
+            model_class_path: Optional path to a Python file containing model class definition
+                            (required for PyTorch state_dict models)
         """
         # Get model info from registry
         model_info = self.get_model_info(model_name, version)
         if not model_info:
-            raise ValueError(f"Model {model_name} (version: {version or 'latest'}) not found in registry")
-            
-        model_path = model_info["path"]
-        framework = model_info["framework"]
-        version = model_info["version"]
+            raise ValueError(f"Model '{model_name}' (version: {version or 'latest'}) not found in registry.")
+
+        model_path = model_info['path']
+        framework = model_info['framework']
         
-        print("Generating project for", model_name, "v", version)
-        print("Output directory:", output_dir)
-        
-        # Create output directory structure
+        # Create output directories
         output_path = Path(output_dir).absolute()
         app_dir = output_path / "app"
         app_dir.mkdir(parents=True, exist_ok=True)
         
         # Copy model file to app directory
-        model_file_name = Path(model_path).name
-        model_output_path = app_dir / model_file_name
+        model_file = Path(model_path)
+        model_dest = app_dir / model_file.name
         
         try:
-            shutil.copy2(model_path, model_output_path)
-            print("[SUCCESS] Model file copied to", model_output_path)
+            # Copy the model file
+            shutil.copy2(model_path, str(model_dest))
             
-            # Get template variables
-            template_vars = get_template_vars(str(model_output_path), framework)
-            template_vars['model_name'] = model_file_name
-            template_vars['model_info'] = model_info  # Pass full model info to templates
+            # Copy model class file if provided (for PyTorch state_dict)
+            if framework == 'pytorch' and model_class_path and Path(model_class_path).exists():
+                model_class_file = Path(model_class_path)
+                model_class_dest = app_dir / "model.py"
+                shutil.copy2(model_class_path, str(model_class_dest))
+                print(f"[INFO] Copied model class from {model_class_path} to {model_class_dest}")
             
             # Generate API code - pass the parent directory, not the app_dir
             self._api_generator.generate(
-                model_path=str(model_output_path),
+                model_path=str(model_dest),
                 framework=framework,
                 output_dir=str(output_path),  # Pass the parent directory here
                 api_type=api_type,
-                template_vars=template_vars
+                template_vars={
+                    'model_name': model_dest.name,
+                    'framework': framework,
+                    'model_class_available': framework == 'pytorch' and model_class_path and Path(model_class_path).exists(),
+                }
             )
             
             # Generate Docker configuration
             self._docker_generator.generate(
                 output_dir=str(output_path),
-                template_vars=template_vars
+                template_vars={
+                    'model_name': model_dest.name,
+                    'framework': framework,
+                }
             )
+            
+            # Generate README
+            self._generate_readme(str(output_path))
             
             print("[SUCCESS] Project generated successfully in", output_dir)
             

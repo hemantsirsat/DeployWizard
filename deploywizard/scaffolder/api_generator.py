@@ -24,8 +24,14 @@ class APIGenerator:
             logger.error(f"Template not found: {e}")
             raise
 
-    def generate(self, model_path: str, framework: str, output_dir: str, 
-                api_type: str = "fastapi", template_vars: Optional[Dict[str, Any]] = None) -> None:
+    def generate(
+        self, 
+        model_path: str, 
+        framework: str, 
+        output_dir: str, 
+        api_type: str = "fastapi",
+        template_vars: Optional[Dict[str, Any]] = None
+    ) -> None:
         """
         Generate API code and requirements for the model.
         
@@ -38,109 +44,103 @@ class APIGenerator:
         """
         logger.info(f"Generating API for {model_path} with framework {framework}")
         
-        if template_vars is None:
-            template_vars = {}
-            
-        # Add common template variables
-        template_vars.update({
-            'model_path': model_path,
+        # Set up output directories
+        output_path = Path(output_dir)
+        app_dir = output_path / "app"
+        app_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Default template variables
+        default_vars = {
+            'model_name': Path(model_path).name,
             'framework': framework,
-            'api_type': api_type,
-            'model_name': Path(model_path).name  # Add model_name for the template
-        })
-        
-        # Generate API code
-        self.generate_api(template_vars, output_dir)
-        
-        # Generate requirements
-        requirements = {
-            'fastapi': '>=0.68.0',
-            'uvicorn': '>=0.15.0',
-            'python-multipart': '',  # For file uploads
-            'pydantic': '>=1.8.2,<2.0.0',
-            'numpy': '==1.23.5'  # Pin numpy version for compatibility
+            'model_class_available': False,
         }
         
-        # Add framework-specific requirements
-        if framework == 'sklearn':
-            requirements['scikit-learn'] = '==1.2.2'  # Pin scikit-learn version
-            requirements['joblib'] = ''
-        elif framework == 'pytorch':
-            requirements['torch'] = ''
-        elif framework == 'tensorflow':
-            requirements['tensorflow'] = ''
-            
-        self.generate_requirements(requirements, output_dir)
+        # Merge with provided template variables
+        template_vars = {**default_vars, **(template_vars or {})}
+        
+        # Generate main application file
+        self._generate_main(app_dir, framework, template_vars)
+        
+        # Generate requirements.txt
+        self._generate_requirements(app_dir, framework)
+        
+        # Generate README if it doesn't exist
+        readme_path = app_dir / "README.md"
+        if not readme_path.exists():
+            self._generate_readme(app_dir, framework, template_vars)
 
-    def generate_api(self, model_info: Dict[str, Any], output_dir: str) -> None:
-        """Generate FastAPI application code."""
+    def _generate_main(self, output_dir: Path, framework: str, template_vars: Dict[str, Any]) -> None:
+        """Generate the main application file."""
         try:
-            # Ensure output directory exists
-            output_path = Path(output_dir) / 'app'
-            output_path.mkdir(parents=True, exist_ok=True)
-            
-            logger.info(f"Output directory: {output_path.absolute()}")
-            logger.info(f"Directory exists: {output_path.exists()}")
-            logger.info(f"Directory contents: {list(output_path.glob('*')) if output_path.exists() else 'N/A'}")
-            
-            # Get the template
-            logger.info("Loading template...")
             template = self._env.get_template('fastapi_main.tpl')
-            logger.info(f"Rendering template with model_info: {model_info}")
+            output = template.render(
+                framework=framework,
+                model_name=template_vars['model_name'],
+                model_class_available=template_vars.get('model_class_available', False),
+            )
             
-            # Render the template
-            rendered = template.render(**model_info)
-            
-            # Write the output file
-            main_py = output_path / 'main.py'
-            logger.info(f"Writing API code to {main_py.absolute()}")
-            
-            main_py.write_text(rendered, encoding='utf-8')
-            logger.info(f"Successfully wrote {main_py.absolute()} (exists: {main_py.exists()})")
-            
-            # Verify the file was written
-            if not main_py.exists():
-                error_msg = f"Failed to create {main_py}"
-                logger.error(error_msg)
-                # Try to write to a different location to debug
-                debug_path = Path.cwd() / 'debug_main.py'
-                debug_path.write_text(rendered, encoding='utf-8')
-                logger.error(f"Wrote debug file to {debug_path.absolute()}")
-                raise RuntimeError(f"{error_msg}. Debug file written to {debug_path}")
+            with open(output_dir / "main.py", "w", encoding="utf-8") as f:
+                f.write(output)
                 
         except Exception as e:
-            logger.error(f"Error generating API code: {str(e)}", exc_info=True)
+            logger.error(f"Failed to generate main.py: {e}")
             raise
 
-    def generate_requirements(self, requirements: Dict[str, str], output_dir: str) -> None:
+    def _generate_requirements(self, output_dir: Path, framework: str) -> None:
         """
         Generate requirements.txt file.
         
         Args:
-            requirements: Dictionary of package names to version specifications
             output_dir: Directory to write requirements.txt to
+            framework: Framework used (e.g., "sklearn", "pytorch", "tensorflow")
         """
         try:
-            output_path = Path(output_dir) / 'app'
-            output_path.mkdir(parents=True, exist_ok=True)
+            requirements = {
+                'fastapi': '>=0.68.0',
+                'uvicorn': '>=0.15.0',
+                'python-multipart': '',  # For file uploads
+                'pydantic': '>=1.8.2,<2.0.0',
+                'numpy': '==1.23.5'  # Pin numpy version for compatibility
+            }
             
-            requirements_path = output_path / 'requirements.txt'
-            logger.info(f"Writing requirements to {requirements_path.absolute()}")
-            
-            with requirements_path.open('w', encoding='utf-8') as f:
+            # Add framework-specific requirements
+            if framework == 'sklearn':
+                requirements['scikit-learn'] = '==1.2.2'  # Pin scikit-learn version
+                requirements['joblib'] = ''
+            elif framework == 'pytorch':
+                requirements['torch'] = ''
+            elif framework == 'tensorflow':
+                requirements['tensorflow'] = ''
+                
+            with open(output_dir / "requirements.txt", "w", encoding="utf-8") as f:
                 for pkg, version in requirements.items():
                     if version:
                         f.write(f"{pkg}{version}\n")
                     else:
                         f.write(f"{pkg}\n")
+                    
+        except Exception as e:
+            logger.error(f"Failed to generate requirements.txt: {e}")
+            raise
+
+    def _generate_readme(self, output_dir: Path, framework: str, template_vars: Dict[str, Any]) -> None:
+        """
+        Generate README.md file.
+        
+        Args:
+            output_dir: Directory to write README.md to
+            framework: Framework used (e.g., "sklearn", "pytorch", "tensorflow")
+            template_vars: Template variables
+        """
+        try:
+            # Generate README content
+            readme_content = f"# {template_vars['model_name']} API\n"
+            readme_content += f"Generated using {framework} framework.\n"
             
-            logger.info(f"Successfully wrote requirements to {requirements_path.absolute()}")
-            
-            if not requirements_path.exists():
-                error_msg = f"Failed to create {requirements_path}"
-                logger.error(error_msg)
-                raise RuntimeError(error_msg)
+            with open(output_dir / "README.md", "w", encoding="utf-8") as f:
+                f.write(readme_content)
                 
         except Exception as e:
-            logger.error(f"Error generating requirements: {str(e)}")
+            logger.error(f"Failed to generate README.md: {e}")
             raise
