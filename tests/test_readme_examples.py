@@ -227,6 +227,7 @@ def test_end_to_end_workflow(temp_dir):
         # Test health check with retries
         health_check_passed = False
         health_response = None
+        response = None  # Initialize response variable
         
         # Use requests for more reliable HTTP requests
         import requests
@@ -248,23 +249,19 @@ def test_end_to_end_workflow(temp_dir):
                     health_response = response.json()
                     print(f"Health check response JSON: {health_response}")
                     
-                    # Check response format
-                    if not isinstance(health_response, dict):
-                        print(f"Unexpected response type: {type(health_response)}")
-                        continue
-                        
-                    if "status" not in health_response:
-                        print("Health check response missing 'status' field")
-                        continue
-                        
-                    status = health_response.get("status")
-                    if status not in ["ok", "healthy"]:
-                        print(f"Unexpected health check status: {status}")
-                        continue
-                        
-                    health_check_passed = True
-                    break
-                    
+                    # Check if the response contains expected fields
+                    if isinstance(health_response, dict):
+                        if health_response.get("status") == "ok":
+                            health_check_passed = True
+                            break
+                        else:
+                            print(f"Unexpected status in health check: {health_response}")
+                    else:
+                        print(f"Unexpected health check response format: {health_response}")
+                else:
+                    print(f"Unexpected status code: {response.status_code}")
+                    print(f"Response content: {response.text}")
+            
             except requests.exceptions.ConnectionError as e:
                 if isinstance(e.args[0], NewConnectionError):
                     print(f"Connection refused - service may not be ready yet: {e}")
@@ -274,11 +271,11 @@ def test_end_to_end_workflow(temp_dir):
                 print(f"Health check request failed: {e}")
             except json.JSONDecodeError as e:
                 print(f"Failed to parse health check response: {e}")
-                if 'response' in locals() and hasattr(response, 'text'):
+                if response is not None and hasattr(response, 'text'):
                     print(f"Response text: {response.text[:500]}")
             except Exception as e:
                 print(f"Unexpected error during health check: {str(e)}")
-            
+
             if attempt < max_retries - 1:
                 wait_time = 2 * (attempt + 1)  # Exponential backoff
                 print(f"Retrying in {wait_time} seconds...")
