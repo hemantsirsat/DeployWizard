@@ -63,7 +63,7 @@ class APIGenerator:
         
         # Add framework-specific requirements
         if framework == 'sklearn':
-            requirements['scikit-learn'] = ''
+            requirements['scikit-learn'] = '==1.2.2'  # Pin scikit-learn version
             requirements['joblib'] = ''
         elif framework == 'pytorch':
             requirements['torch'] = ''
