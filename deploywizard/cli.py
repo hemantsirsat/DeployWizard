@@ -5,15 +5,40 @@ from rich.console import Console
 from rich.table import Table
 
 from deploywizard.scaffolder import Scaffolder
+from deploywizard import __version__
 
-app = typer.Typer(help="DeployWizard - ML Model Deployment Tool")
-console = Console()
+# Create the main CLI app
+app = typer.Typer(
+    help="DeployWizard - ML Model Deployment Tool",
+    no_args_is_help=True,
+    add_completion=False,
+    context_settings={"help_option_names": ["-h", "--help"]}
+)
 
 # Common options
 model_name_option = typer.Option(..., "--name", "-n", help="Name of the model")
 version_option = typer.Option(None, "--version", "-v", help="Version of the model (default: latest)")
 framework_option = typer.Option(..., "--framework", "-f", help="Model framework (sklearn, pytorch, tensorflow)")
 description_option = typer.Option("", "--description", "-d", help="Description of the model")
+
+# Create console instance
+console = Console()
+
+def version_callback(value: bool):
+    if value:
+        console.print(f"DeployWizard v{__version__}", style="bold green")
+        raise typer.Exit()
+
+# Add version callback to the main app
+app.callback()(lambda: None)  # This is needed to make the callback work
+app.callback()(typer.Option(
+    None,
+    "--version",
+    "-V",
+    help="Show version and exit.",
+    callback=version_callback,
+    is_eager=True,
+))
 
 @app.command()
 def register(
