@@ -58,7 +58,7 @@ class APIGenerator:
             'uvicorn': '>=0.15.0',
             'python-multipart': '',  # For file uploads
             'pydantic': '>=1.8.2,<2.0.0',
-            'numpy': ''
+            'numpy': '==1.23.5'  # Pin numpy version for compatibility
         }
         
         # Add framework-specific requirements
