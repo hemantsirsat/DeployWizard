@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "deploywizard"
-version = "0.2.1.23062025"
+version = "0.3.0.0"
 description = "A CLI tool for deploying ML models as production-ready REST APIs"
 readme = "README.md"
 authors = [
