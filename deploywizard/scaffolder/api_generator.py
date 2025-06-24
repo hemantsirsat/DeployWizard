@@ -100,18 +100,18 @@ class APIGenerator:
                 'fastapi': '>=0.68.0',
                 'uvicorn': '>=0.15.0',
                 'python-multipart': '',  # For file uploads
-                'pydantic': '>=1.8.2,<2.0.0',
-                'numpy': '>=1.21.0,<2.0.0'  # Compatible range for PyTorch 2.1.0
+                'pydantic': '>=1.8.2,<3.0.0',
+                'numpy': '>=1.21.0,<2.0.0'  # Compatible with most ML libraries
             }
             
             # Add framework-specific requirements
             if framework == 'sklearn':
-                requirements['scikit-learn'] = '>=1.3.0,<1.8.0'  # Compatible range including 1.7.0
-                requirements['joblib'] = ''
+                requirements['scikit-learn'] = '>=1.0.0,<2.0.0'  # Support a wide range of scikit-learn versions
+                requirements['joblib'] = '>=1.0.0'  # Flexible joblib version
             elif framework == 'pytorch':
-                requirements['torch'] = '==2.1.0'  # Pin PyTorch version for consistency
+                requirements['torch'] = '>=1.9.0,<3.0.0'  # Support a wide range of PyTorch versions
             elif framework == 'tensorflow':
-                requirements['tensorflow'] = ''
+                requirements['tensorflow'] = '>=2.6.0,<3.0.0'  # Support TF 2.x
                 
             with open(output_dir / "requirements.txt", "w", encoding="utf-8") as f:
                 for pkg, version in requirements.items():
