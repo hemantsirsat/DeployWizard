@@ -101,15 +101,15 @@ class APIGenerator:
                 'uvicorn': '>=0.15.0',
                 'python-multipart': '',  # For file uploads
                 'pydantic': '>=1.8.2,<2.0.0',
-                'numpy': '==1.23.5'  # Pin numpy version for compatibility
+                'numpy': '>=1.21.0,<2.0.0'  # Compatible range for PyTorch 2.1.0
             }
             
             # Add framework-specific requirements
             if framework == 'sklearn':
-                requirements['scikit-learn'] = '==1.2.2'  # Pin scikit-learn version
+                requirements['scikit-learn'] = '>=1.3.0,<1.8.0'  # Compatible range including 1.7.0
                 requirements['joblib'] = ''
             elif framework == 'pytorch':
-                requirements['torch'] = ''
+                requirements['torch'] = '==2.1.0'  # Pin PyTorch version for consistency
             elif framework == 'tensorflow':
                 requirements['tensorflow'] = ''
                 

@@ -22,11 +22,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --chown=appuser:appuser app/requirements.txt .
 
 # Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt && \
-    pip install --no-cache-dir scikit-learn numpy && \
-    if [ "$FRAMEWORK" = "pytorch" ]; then \
-       pip install --no-cache-dir torch; \
-    fi
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY --chown=appuser:appuser app/ .
