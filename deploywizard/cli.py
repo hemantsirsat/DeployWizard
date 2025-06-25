@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import Optional, List, Any
 from rich.console import Console
 from rich.table import Table
+from datetime import datetime
 
 from deploywizard.scaffolder import Scaffolder
 from deploywizard import __version__
@@ -302,20 +303,50 @@ def init(
     model: str = typer.Option(..., help="Path to saved model file"),
     framework: str = typer.Option(..., help="Model framework (sklearn, pytorch, tensorflow)"),
     api: str = typer.Option("fastapi", help="Type of API to generate"),
-    output_dir: str = typer.Option("my_app", help="Output directory")
+    output_dir: str = typer.Option("my_app", help="Output directory"),
+    name: str = typer.Option(None, "--name", "-n", help="Name for the model (defaults to the filename without extension)"),
+    model_class: str = typer.Option(None, "--model-class", help="Path to Python file containing model class definition (required for PyTorch state_dict models)")
 ):
-    """Initialize a new ML model deployment project."""
+    """Initialize a new ML model deployment project.
+    
+    For PyTorch models saved as state_dict, you must provide --model-class pointing to a Python file
+    containing the model class definition.
+    """
     try:
+        # Use the provided name or derive from filename
+        if not name:
+            name = Path(model).stem
+            
         scaffolder = Scaffolder()
-        scaffolder.generate_project(
+        
+        # Register the model first
+        model_info = scaffolder.register_model(
+            name=name,
+            version="1.0.0",
             model_path=model,
             framework=framework,
-            api_type=api,
-            output_dir=output_dir
+            description=f"Automatically registered by init command on {datetime.now().isoformat()}"
         )
+        
+        # Then generate the project
+        scaffolder.generate_project(
+            model_name=name,
+            version="1.0.0",
+            output_dir=output_dir,
+            api_type=api,
+            model_class_path=model_class
+        )
+        
         typer.echo(f"Successfully generated project in {output_dir}")
+        typer.echo(f"Model '{name}' v1.0.0 has been registered and is ready to be deployed")
+        typer.echo("\nNext steps:")
+        typer.echo(f"\t1. cd {output_dir}")
+        typer.echo("\t2. docker-compose up --build")
+        typer.echo("\n\tYour API will be available at http://localhost:8000")
+        typer.echo("\tAPI documentation: http://localhost:8000/docs")
+        
     except Exception as e:
-        typer.echo(f"Error: {str(e)}", err=True)
+        typer.echo(f"❌ Error: {str(e)}", err=True)
         raise typer.Exit(code=1)
 
 def _print_model_info(model_info: dict):

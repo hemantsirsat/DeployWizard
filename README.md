@@ -37,86 +37,54 @@ DeployWizard is a powerful CLI tool that automates the deployment of machine lea
 
 ## Quick Start
 
-### 1. Register a Model
+### 1. Initialize a New Project (Recommended for New Models)
+
+The `init` command creates a new deployment project and registers your model in one step:
 
 ```bash
-# Register a scikit-learn model
-deploywizard register iris_model.pkl --name iris_classifier --version 1.0.0 --framework sklearn --description "Iris classifier with 95% accuracy"
+# Initialize a project with a scikit-learn model
+deploywizard init --model path/to/model.pkl --framework sklearn --output-dir my_ml_api
 
-# Register a PyTorch model
-deploywizard register sentiment_model.pt --name sentiment_analyzer --version 2.1.0 --framework pytorch --description "BERT-based sentiment analysis"
+# Initialize with a custom model name
+deploywizard init --model path/to/model.pkl --framework sklearn --output-dir my_ml_api --name my_model
 
-# Register a TensorFlow model
-deploywizard register image_model.h5 --name image_classifier --version 3.0.0 --framework tensorflow --description "CNN for image classification"
+# For PyTorch models (full model)
+deploywizard init --model path/to/model.pt --framework pytorch --output-dir pytorch_api
+
+# For PyTorch state_dict models (requires model class)
+deploywizard init --model path/to/model.pt --framework pytorch --output-dir pytorch_api \
+    --model-class path/to/model.py
 ```
 
-### 2. List and Inspect Models
+This will:
+1. Register your model in the DeployWizard registry
+2. Create a new directory with a complete API project
+3. Generate all necessary configuration files
+4. Print the next steps to run your API
 
+### 2. Deploying PyTorch Models
+
+When working with PyTorch models, you have two options depending on how the model was saved:
+
+#### Option 1: Full Model (Recommended)
+If you saved the entire model using `torch.save(model, 'model.pt')`:
 ```bash
-# List all registered models
-deploywizard list
-# Output:
-# ┏━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━┳━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━┓
-# ┃ Name                ┃ Version ┃ Framework ┃ Description                                      ┃ Registered At ┃
-# ┡━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━╇━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━┩
-# │ test-model          │ 1.0.0   │ sklearn   │ Test model                                       │ 2025-06-23    │
-# │ test-model-db0357e8 │ 1.0.0   │ sklearn   │ Test model                                       │ 2025-06-23    │
-# │ sklearn_test_model  │ 1.0.0   │ sklearn   │ Logistic regression model trained on 100         │ 2025-06-23    │
-# │                     │         │           │ samples, ...                                     │               │
-# └─────────────────────┴─────────┴───────────┴──────────────────────────────────────────────────┴───────────────┘
-
-# Get detailed info about a specific model
-deploywizard info --name sklearn_test_model
-# Output:
-# 
-# Model Information
-#   • Name: sklearn_test_model
-#   • Version: 1.0.0
-#   • Framework: sklearn
-#   • Path: /path/to/test_models/sklearn_model.pkl
-#   • Registered: 2025-06-23T12:35:12.495113+00:00
-#
-# Description:
-#   Logistic regression model trained on 100 samples, 4 features and 2 classes.
+deploywizard init --model model.pt --framework pytorch --output-dir pytorch_api
 ```
 
-### 3. Deploy a Model
+#### Option 2: State Dictionary
+If you saved just the state dict using `torch.save(model.state_dict(), 'model.pt')`, you need to provide the model class definition:
 
-```bash
-# Deploy a specific version of a model
-deploywizard deploy --name sklearn_test_model --version 1.0.0 --output sklearn_test_model_api
-
-# For PyTorch models saved as state_dict, provide the model class file
-deploywizard deploy --name pytorch_model --model-class path/to/model.py --output pytorch_model_api
-
-# Or deploy the latest version (omitting --version)
-deploywizard deploy --name sklearn_test_model --output my_model_api
-```
-
-### 4. PyTorch Model Deployment
-
-When deploying PyTorch models, you have several options:
-
-1. **Full Model**: If you saved the entire model using `torch.save(model, 'model.pt')`, you can deploy it directly:
-   ```bash
-   deploywizard deploy --name my_pytorch_model --output pytorch_api
-   ```
-
-2. **State Dictionary**: If you saved just the state dict (`torch.save(model.state_dict(), 'model.pt')`), you need to provide the model class definition:
-   ```bash
-   deploywizard deploy --name my_pytorch_model --model-class path/to/model.py --output pytorch_api
-   ```
-
-   The model class file should define a PyTorch model that inherits from `torch.nn.Module`. For example:
+1. Create a Python file (e.g., `model.py`) with your model class:
    ```python
    import torch
    import torch.nn as nn
    
-   class SimpleTorchModel(nn.Module):
-       def __init__(self):
+   class MyModel(nn.Module):
+       def __init__(self, input_size=10, hidden_size=20, output_size=1):
            super().__init__()
            self.fc1 = nn.Linear(input_size, hidden_size)
-           self.fc2 = nn.Linear(hidden_size, 1)
+           self.fc2 = nn.Linear(hidden_size, output_size)
            self.sigmoid = nn.Sigmoid()
        
        def forward(self, x):
@@ -125,33 +93,59 @@ When deploying PyTorch models, you have several options:
            return self.sigmoid(x)
    ```
 
-### 5. Run the Deployed API
+2. Initialize the project with the model class:
+   ```bash
+   deploywizard init --model model.pt --framework pytorch --output-dir pytorch_api \
+       --model-class model.py
+   ```
 
-After deploying, navigate to the output directory and start the API:
+### 3. Run the Deployed API
+
+After initializing your project, navigate to the output directory and start the API:
 
 ```bash
-cd sklearn_test_model_api
+cd my_ml_api
 docker-compose up --build
 ```
 
-Once the containers are up and running, you can access:
+Once the containers are running, you can access:
 - API: http://localhost:8000
 - Interactive API documentation: http://localhost:8000/docs
 - Alternative documentation: http://localhost:8000/redoc
 
-### 6. Test the API
+### 4. Test the API
 
-You can test the API using `curl` or any HTTP client:
+Test the API using `curl` or any HTTP client:
 
 ```bash
 # Health check
 curl http://localhost:8000/health
 # Expected output: {"status":"healthy"}
 
-# Make predictions (example for a scikit-learn model)
+# Make predictions (example format)
 curl -X POST http://localhost:8000/predict \
   -H "Content-Type: application/json" \
   -d '{"data": [[5.1, 3.5, 1.4, 0.2]]}'
+```
+
+## Advanced Usage
+
+### Manual Model Registration (Alternative to `init`)
+
+If you prefer to manage the model registration separately:
+
+```bash
+# Register a model
+deploywizard register model.pkl --name my_model --version 1.0.0 --framework sklearn
+
+# Deploy a registered model
+deploywizard deploy --name my_model --output my_api
+
+# Update model metadata
+deploywizard update --name my_model --new-version 2.0.0 --description "Improved model"
+
+# Delete a model
+deploywizard delete --name old_model
 ```
 
 ## Testing
