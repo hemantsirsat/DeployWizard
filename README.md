@@ -125,7 +125,7 @@ curl http://localhost:8000/health
 # Make predictions (example format)
 curl -X POST http://localhost:8000/predict \
   -H "Content-Type: application/json" \
-  -d '{"data": [[5.1, 3.5, 1.4, 0.2]]}'
+  -d '{"features": [5.1, 3.5, 1.4, 0.2]}'
 ```
 
 ## Advanced Usage
