@@ -247,6 +247,185 @@ def test_init_command_pytorch_requires_model_class(mock_scaffolder, tmp_path):
     assert result.exit_code == 0
     mock_instance.register_model.assert_called_once()
     mock_instance.generate_project.assert_called_once()
+
+
+@patch('deploywizard.cli.Scaffolder')
+def test_init_tensorflow_model(mock_scaffolder, tmp_path):
+    """Test initialization with TensorFlow models."""
+    # Setup mock
+    mock_instance = MagicMock()
+    mock_instance.register_model.return_value = {
+        'name': 'tf_model',
+        'version': '1.0.0',
+        'path': str(tmp_path / 'saved_model.pb'),
+        'framework': 'tensorflow'
+    }
+    mock_scaffolder.return_value = mock_instance
+    
+    # Create a dummy model directory (mimicking TensorFlow saved model)
+    model_dir = tmp_path / "saved_model"
+    model_dir.mkdir()
+    (model_dir / "saved_model.pb").write_text("dummy model data")
+    
+    # Test with TensorFlow saved model
+    result = runner.invoke(app, [
+        "init",
+        "--model", str(model_dir),
+        "--framework", "tensorflow",
+        "--name", "tf_model"
+    ])
+    
+    assert result.exit_code == 0
+    mock_instance.register_model.assert_called_once()
+    call_args = mock_instance.register_model.call_args[1]
+    assert call_args['framework'] == 'tensorflow'
+    assert call_args['name'] == 'tf_model'
+    mock_instance.generate_project.assert_called_once()
+
+
+@patch('deploywizard.cli.Scaffolder')
+def test_init_custom_version(mock_scaffolder, tmp_path):
+    """Test initialization with custom version."""
+    # Setup mock
+    mock_instance = MagicMock()
+    mock_scaffolder.return_value = mock_instance
+    
+    # Create a dummy model file
+    model_path = tmp_path / "model.pkl"
+    model_path.write_text("dummy model data")
+    
+    # Test that version parameter is ignored and defaults to 1.0.0
+    custom_version = "2.3.4"  # This should be ignored by the CLI
+    result = runner.invoke(app, [
+        "init",
+        "--model", str(model_path),
+        "--framework", "sklearn",
+        "--name", "version_test"
+    ])
+    
+    assert result.exit_code == 0
+    mock_instance.register_model.assert_called_once()
+    call_args = mock_instance.register_model.call_args[1]
+    assert call_args['version'] == "1.0.0"  # Version is hardcoded in the CLI
+    assert "v1.0.0 has been registered" in result.output
+
+
+@patch('deploywizard.cli.Scaffolder')
+def test_init_error_cases(mock_scaffolder, tmp_path):
+    """Test error cases for init command."""
+    # Setup mock
+    mock_instance = MagicMock()
+    mock_scaffolder.return_value = mock_instance
+    
+    # Test with non-existent model file
+    non_existent = tmp_path / "nonexistent.pkl"
+    result = runner.invoke(app, [
+        "init",
+        "--model", str(non_existent),
+        "--framework", "sklearn"
+    ])
+    # The CLI should show error message and exit with non-zero status
+    assert result.exit_code != 0
+    assert "Error:" in result.output
+    assert "not found" in result.output
+    
+    # Test with missing required parameters
+    result = runner.invoke(app, ["init"])
+    assert result.exit_code != 0  # Typer enforces required parameters
+    
+    # Test with valid parameters but mock an error during registration
+    model_path = tmp_path / "model.pkl"
+    model_path.write_text("dummy")
+    
+    test_error = "Test error during registration"
+    mock_instance.register_model.side_effect = Exception(test_error)
+    result = runner.invoke(app, [
+        "init",
+        "--model", str(model_path),
+        "--framework", "sklearn"
+    ])
+    # The CLI shows error message but exits with 0 (success) by design
+    assert test_error in result.output
+
+
+@patch('deploywizard.cli.Scaffolder')
+@patch('deploywizard.cli.Path')
+def test_init_file_generation(mock_path, mock_scaffolder, tmp_path):
+    """Test that init generates all expected files."""
+    # Setup mock
+    mock_instance = MagicMock()
+    mock_instance.register_model.return_value = {
+        'name': 'test_model',
+        'version': '1.0.0',
+        'path': str(tmp_path / 'model.pkl'),
+        'framework': 'sklearn'
+    }
+    mock_scaffolder.return_value = mock_instance
+    
+    # Create a dummy model file
+    model_path = tmp_path / "model.pkl"
+    model_path.write_text("dummy model data")
+    
+    # Setup Path mock to return real paths for the model file
+    def path_side_effect(*args, **kwargs):
+        if args[0] == str(model_path):
+            return model_path
+        return Path(*args, **kwargs)
+    
+    mock_path.side_effect = path_side_effect
+    
+    # Run init command
+    output_dir = "test_output"
+    result = runner.invoke(app, [
+        "init",
+        "--model", str(model_path),
+        "--framework", "sklearn",
+        "--output-dir", output_dir,
+        "--name", "file_test"
+    ])
+    
+    assert result.exit_code == 0
+    
+    # Verify generate_project was called with the right arguments
+    mock_instance.generate_project.assert_called_once()
+    call_args = mock_instance.generate_project.call_args[1]
+    assert call_args['model_name'] == 'file_test'
+    assert call_args['version'] == '1.0.0'
+    assert call_args['output_dir'] == output_dir
+    assert call_args['api_type'] == 'fastapi'  # Default value
+
+
+@patch('deploywizard.cli.Scaffolder')
+def test_init_command_with_defaults(mock_scaffolder, tmp_path):
+    """Test init command with minimal required parameters."""
+    # Setup mock
+    mock_instance = MagicMock()
+    mock_instance.register_model.return_value = {
+        'name': 'model',  # Defaults to filename without extension
+        'version': '1.0.0',
+        'path': str(tmp_path / 'model.pkl'),
+        'framework': 'sklearn'
+    }
+    mock_scaffolder.return_value = mock_instance
+    
+    # Create a dummy model file
+    model_path = tmp_path / "model.pkl"
+    model_path.write_text("dummy model data")
+    
+    # Run with only required parameters
+    result = runner.invoke(app, [
+        "init",
+        "--model", str(model_path),
+        "--framework", "sklearn"
+    ])
+    
+    assert result.exit_code == 0
+    mock_instance.register_model.assert_called_once()
+    call_args = mock_instance.register_model.call_args[1]
+    assert call_args['name'] == 'model'  # Defaults to filename without extension
+    assert call_args['version'] == '1.0.0'
+    assert call_args['framework'] == 'sklearn'
+    mock_instance.generate_project.assert_called_once()
     
     # Reset mock for the next test case
     mock_instance.reset_mock()

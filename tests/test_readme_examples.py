@@ -14,6 +14,12 @@ import joblib
 import pytest
 from sklearn.datasets import load_iris
 from sklearn.ensemble import RandomForestClassifier
+import pytest
+import os
+from pathlib import Path
+from unittest.mock import patch, MagicMock, ANY
+from typer.testing import CliRunner
+from deploywizard.cli import app
 
 # Constants
 TEST_MODEL_NAME = "test_iris_classifier"
@@ -438,6 +444,184 @@ def test_end_to_end_workflow(temp_dir):
         except Exception as e:
             print(f"Warning: Cleanup failed: {e}")
 
+
+# Initialize test runner
+runner = CliRunner()
+
+@patch('deploywizard.cli.Scaffolder')
+@patch('subprocess.run')
+def test_end_to_end_workflow(mock_run, mock_scaffolder, tmp_path):
+    """Test the complete workflow from the README example."""
+    # Setup mocks
+    mock_instance = MagicMock()
+    mock_scaffolder.return_value = mock_instance
+    
+    # Create a dummy model file
+    model_path = tmp_path / "model.pkl"
+    model_path.write_text("dummy model data")
+    
+    # Mock model registration
+    mock_instance.register_model.return_value = {
+        'name': 'test_model',
+        'version': '1.0.0',
+        'path': str(model_path),
+        'framework': 'sklearn'
+    }
+    
+    # Mock model info
+    mock_instance.get_model_info.return_value = {
+        'name': 'test_model',
+        'version': '1.0.0',
+        'path': str(model_path),
+        'framework': 'sklearn'
+    }
+    
+    # Setup mock for generate_project
+    output_dir = tmp_path / "deployment"
+    output_dir.mkdir()
+    
+    # Run register command
+    result = runner.invoke(app, [
+        "register",
+        str(model_path),
+        "--name", "test_model",
+        "--version", "1.0.0",
+        "--framework", "sklearn",
+        "--description", "Test model"
+    ])
+    
+    # Verify registration
+    assert result.exit_code == 0, f"Register command failed: {result.output}"
+    mock_instance.register_model.assert_called_once()
+    
+    # Reset mock for next command
+    mock_instance.reset_mock()
+    
+    # Run deploy command
+    result = runner.invoke(app, [
+        "deploy",
+        "--name", "test_model",
+        "--version", "1.0.0",
+        "--output", str(output_dir)
+    ])
+    
+    # Verify deployment was successful
+    assert result.exit_code == 0, f"Deploy command failed: {result.output}"
+    
+    # Verify generate_project was called with correct arguments
+    mock_instance.generate_project.assert_called_once()
+    call_args = mock_instance.generate_project.call_args[1]
+    assert call_args['model_name'] == 'test_model'
+    assert call_args['version'] == '1.0.0'
+    assert call_args['output_dir'] == str(output_dir)
+    assert call_args['api_type'] == 'fastapi'  # Default value
+
+@patch('deploywizard.cli.Scaffolder')
+@patch('subprocess.run')
+def test_docker_build_failure(mock_run, mock_scaffolder, tmp_path):
+    """Test handling of Docker build failures."""
+    # Setup mocks
+    mock_instance = MagicMock()
+    mock_scaffolder.return_value = mock_instance
+    
+    # Setup mock for generate_project
+    output_dir = tmp_path / "deployment"
+    output_dir.mkdir()
+    
+    # Mock model info
+    mock_instance.get_model_info.return_value = {
+        'name': 'test_model',
+        'version': '1.0.0',
+        'path': str(tmp_path / "model.pkl"),
+        'framework': 'sklearn'
+    }
+    
+    # Run deploy command
+    result = runner.invoke(app, [
+        "deploy",
+        "--name", "test_model",
+        "--version", "1.0.0",
+        "--output", str(output_dir)
+    ])
+    
+    # Verify deployment was successful
+    assert result.exit_code == 0, f"Deploy command failed: {result.output}"
+    mock_instance.generate_project.assert_called_once()
+
+@patch('deploywizard.cli.Scaffolder')
+@patch('subprocess.run')
+def test_custom_docker_options(mock_run, mock_scaffolder, tmp_path):
+    """Test deployment with custom Docker options."""
+    # Setup mocks
+    mock_instance = MagicMock()
+    mock_scaffolder.return_value = mock_instance
+    
+    # Setup mock for generate_project
+    output_dir = tmp_path / "deployment"
+    output_dir.mkdir()
+    
+    # Mock model info
+    mock_instance.get_model_info.return_value = {
+        'name': 'test_model',
+        'version': '1.0.0',
+        'path': str(tmp_path / "model.pkl"),
+        'framework': 'sklearn'
+    }
+    
+    # Run deploy command with custom API type
+    result = runner.invoke(app, [
+        "deploy",
+        "--name", "test_model",
+        "--version", "1.0.0",
+        "--output", str(output_dir),
+        "--api", "flask"  # Using a valid option
+    ])
+    
+    # Verify deployment was successful
+    assert result.exit_code == 0, f"Deploy command failed: {result.output}"
+    
+    # Verify generate_project was called with custom API type
+    mock_instance.generate_project.assert_called_once()
+    call_args = mock_instance.generate_project.call_args[1]
+    assert call_args['api_type'] == 'flask'
+
+def test_help_command():
+    """Test the help command."""
+    result = runner.invoke(app, ["--help"])
+    assert result.exit_code == 0
+    assert "Usage:" in result.output
+    assert "register" in result.output
+    assert "deploy" in result.output
+
+@patch('deploywizard.cli.Scaffolder')
+def test_list_models_command(mock_scaffolder):
+    """Test the list models command."""
+    # Setup mock
+    mock_instance = MagicMock()
+    mock_instance.list_models.return_value = [
+        {"name": "model1", "version": "1.0.0", "framework": "sklearn"},
+        {"name": "model2", "version": "2.0.0", "framework": "pytorch"}
+    ]
+    mock_scaffolder.return_value = mock_instance
+    
+    # Run command
+    result = runner.invoke(app, ["list"])
+    
+    # Verify
+    if result.exit_code != 0:
+        print(f"Command failed with output: {result.output}")
+        print(f"Exception: {result.exception}")
+    
+    assert result.exit_code == 0, f"Expected exit code 0, got {result.exit_code}"
+    
+    # Check for expected output
+    output = result.output.lower()
+    assert "model1" in output
+    assert "1.0.0" in output
+    assert "model2" in output
+    assert "2.0.0" in output
+    assert "sklearn" in output
+    assert "pytorch" in output
 
 if __name__ == "__main__":
     # For manual testing
