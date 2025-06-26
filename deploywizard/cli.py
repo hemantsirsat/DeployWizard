@@ -313,9 +313,14 @@ def init(
     containing the model class definition.
     """
     try:
+        # Check if model file exists
+        model_path = Path(model)
+        if not model_path.exists():
+            raise FileNotFoundError(f"Model file not found: {model}")
+            
         # Use the provided name or derive from filename
         if not name:
-            name = Path(model).stem
+            name = model_path.stem
             
         scaffolder = Scaffolder()
         
@@ -323,7 +328,7 @@ def init(
         model_info = scaffolder.register_model(
             name=name,
             version="1.0.0",
-            model_path=model,
+            model_path=str(model_path.absolute()),
             framework=framework,
             description=f"Automatically registered by init command on {datetime.now().isoformat()}"
         )
@@ -346,7 +351,7 @@ def init(
         typer.echo("\tAPI documentation: http://localhost:8000/docs")
         
     except Exception as e:
-        typer.echo(f"❌ Error: {str(e)}", err=True)
+        typer.echo(f"Error: {str(e)}", err=True)
         raise typer.Exit(code=1)
 
 def _print_model_info(model_info: dict):

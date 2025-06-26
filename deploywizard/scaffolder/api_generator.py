@@ -74,11 +74,7 @@ class APIGenerator:
         """Generate the main application file."""
         try:
             template = self._env.get_template('fastapi_main.tpl')
-            output = template.render(
-                framework=framework,
-                model_name=template_vars['model_name'],
-                model_class_available=template_vars.get('model_class_available', False),
-            )
+            output = template.render(**template_vars)
             
             with open(output_dir / "main.py", "w", encoding="utf-8") as f:
                 f.write(output)
