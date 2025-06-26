@@ -20,33 +20,8 @@ class DummyTFModel:
         return np.array([[0.5, 0.5]])
     
     def save(self, filepath, **kwargs):
-        # Create a minimal Keras 3 model file
-        import zipfile
-        import json
-        
-        model_config = {
-            'class_name': 'Functional',
-            'config': {
-                'name': 'model',
-                'layers': [{
-                    'class_name': 'InputLayer',
-                    'config': {
-                        'batch_input_shape': (None, 10),
-                        'dtype': 'float32',
-                        'name': 'input_1',
-                        'sparse': False,
-                        'ragged': False
-                    },
-                    'name': 'input_1',
-                    'inbound_nodes': []
-                }],
-                'input_layers': [['input_1', 0, 0]],
-                'output_layers': [['input_1', 0, 0]]
-            }
-        }
-        
-        with zipfile.ZipFile(filepath, 'w') as zf:
-            zf.writestr('config.json', json.dumps(model_config))
+        # Just create an empty file for testing
+        Path(filepath).touch()
 
 @pytest.fixture
 def sklearn_model(tmp_path):
@@ -71,10 +46,10 @@ def pytorch_model(tmp_path):
 
 @pytest.fixture
 def tensorflow_model(tmp_path):
-    """Create a dummy TensorFlow model in Keras 3 format."""
+    """Create a dummy TensorFlow model file."""
     model = DummyTFModel()
     model_path = tmp_path / "model.keras"
-    model.save(model_path)  # This will create a .keras file
+    model.save(model_path)  # This will create an empty file
     return model_path
 
 def test_load_sklearn(sklearn_model):
@@ -107,8 +82,10 @@ def test_load_tensorflow(tensorflow_model):
         
         # Verify the model was loaded with the correct path
         mock_load_model.assert_called_once()
-        call_args = str(mock_load_model.call_args[0][0])
-        assert str(tensorflow_model) in call_args
+        # Get the first argument passed to load_model
+        actual_path = str(mock_load_model.call_args[0][0])
+        # Check if the path ends with our test file (in case of temp paths)
+        assert str(tensorflow_model) in actual_path
         assert model == mock_model
 
 def test_unsupported_framework(tmp_path):
