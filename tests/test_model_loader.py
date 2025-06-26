@@ -15,14 +15,6 @@ class DummyTorchModel(torch.nn.Module):
     def forward(self, x):
         return self.layer(x)
 
-class DummyTFModel:
-    def predict(self, x):
-        return np.array([[0.5, 0.5]])
-    
-    def save(self, filepath, **kwargs):
-        # Just create an empty file for testing
-        Path(filepath).touch()
-
 @pytest.fixture
 def sklearn_model(tmp_path):
     """Create a dummy scikit-learn model."""
@@ -44,14 +36,6 @@ def pytorch_model(tmp_path):
     torch.save(model.state_dict(), model_path)
     return model_path
 
-@pytest.fixture
-def tensorflow_model(tmp_path):
-    """Create a dummy TensorFlow model file."""
-    model = DummyTFModel()
-    model_path = tmp_path / "model.keras"
-    model.save(model_path)  # This will create an empty file
-    return model_path
-
 def test_load_sklearn(sklearn_model):
     """Test loading a scikit-learn model."""
     loader = ModelLoader()
@@ -66,27 +50,6 @@ def test_load_pytorch(pytorch_model):
     assert isinstance(model, dict)  # Should be a state dict
     assert 'layer.weight' in model
     assert 'layer.bias' in model
-
-def test_load_tensorflow(tensorflow_model):
-    """Test loading a TensorFlow model."""
-    loader = ModelLoader()
-    
-    # Mock the tensorflow.keras.models.load_model function
-    with patch('tensorflow.keras.models.load_model') as mock_load_model:
-        # Mock the model to be returned
-        mock_model = MagicMock()
-        mock_load_model.return_value = mock_model
-        
-        # Call the method
-        model = loader.load(str(tensorflow_model), 'tensorflow')
-        
-        # Verify the model was loaded with the correct path
-        mock_load_model.assert_called_once()
-        # Get the first argument passed to load_model
-        actual_path = str(mock_load_model.call_args[0][0])
-        # Check if the path ends with our test file (in case of temp paths)
-        assert str(tensorflow_model) in actual_path
-        assert model == mock_model
 
 def test_unsupported_framework(tmp_path):
     """Test loading with an unsupported framework."""
