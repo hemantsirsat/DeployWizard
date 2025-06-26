@@ -18,6 +18,11 @@ class DummyTorchModel(torch.nn.Module):
 class DummyTFModel:
     def predict(self, x):
         return np.array([[0.5, 0.5]])
+    
+    def save(self, filepath, **kwargs):
+        # Simulate saving a Keras 3 model
+        (Path(filepath) / 'saved_model.pb').touch()
+        (Path(filepath) / 'variables').mkdir(exist_ok=True)
 
 @pytest.fixture
 def sklearn_model(tmp_path):
@@ -42,12 +47,13 @@ def pytorch_model(tmp_path):
 
 @pytest.fixture
 def tensorflow_model(tmp_path):
-    """Create a dummy TensorFlow model."""
+    """Create a dummy TensorFlow model in Keras 3 format."""
     model = DummyTFModel()
     model_path = tmp_path / "saved_model"
-    # In a real test, we'd save a TensorFlow model here
-    # For testing, we'll just create a directory structure
     model_path.mkdir()
+    # Create a dummy Keras 3 model file
+    (model_path / 'saved_model.pb').touch()
+    (model_path / 'variables').mkdir()
     return model_path
 
 def test_load_sklearn(sklearn_model):
@@ -79,7 +85,9 @@ def test_load_tensorflow(tensorflow_model):
         model = loader.load(str(tensorflow_model), 'tensorflow')
         
         # Verify the model was loaded with the correct path
-        mock_load_model.assert_called_once_with(str(tensorflow_model))
+        # Keras 3 may pass additional arguments, so we check if the path is in the call args
+        mock_load_model.assert_called_once()
+        assert str(tensorflow_model) in str(mock_load_model.call_args[0][0])
         assert model == mock_model
 
 def test_unsupported_framework(tmp_path):
