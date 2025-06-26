@@ -20,16 +20,33 @@ class DummyTFModel:
         return np.array([[0.5, 0.5]])
     
     def save(self, filepath, **kwargs):
-        # Simulate saving a Keras 3 model
-        if str(filepath).endswith('.keras'):
-            # Keras 3 format
-            Path(filepath).write_text('Keras model data v3')
-        else:
-            # Legacy format
-            path = Path(filepath)
-            path.mkdir(exist_ok=True)
-            (path / 'saved_model.pb').touch()
-            (path / 'variables').mkdir(exist_ok=True)
+        # Create a minimal Keras 3 model file
+        import zipfile
+        import json
+        
+        model_config = {
+            'class_name': 'Functional',
+            'config': {
+                'name': 'model',
+                'layers': [{
+                    'class_name': 'InputLayer',
+                    'config': {
+                        'batch_input_shape': (None, 10),
+                        'dtype': 'float32',
+                        'name': 'input_1',
+                        'sparse': False,
+                        'ragged': False
+                    },
+                    'name': 'input_1',
+                    'inbound_nodes': []
+                }],
+                'input_layers': [['input_1', 0, 0]],
+                'output_layers': [['input_1', 0, 0]]
+            }
+        }
+        
+        with zipfile.ZipFile(filepath, 'w') as zf:
+            zf.writestr('config.json', json.dumps(model_config))
 
 @pytest.fixture
 def sklearn_model(tmp_path):
@@ -89,10 +106,9 @@ def test_load_tensorflow(tensorflow_model):
         model = loader.load(str(tensorflow_model), 'tensorflow')
         
         # Verify the model was loaded with the correct path
-        # For Keras 3, we need to check if the path is in the call args
         mock_load_model.assert_called_once()
         call_args = str(mock_load_model.call_args[0][0])
-        assert str(tensorflow_model) in call_args or str(tensorflow_model).replace('.keras', '') in call_args
+        assert str(tensorflow_model) in call_args
         assert model == mock_model
 
 def test_unsupported_framework(tmp_path):
